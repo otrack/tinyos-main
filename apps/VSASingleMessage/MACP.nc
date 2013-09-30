@@ -1,62 +1,83 @@
-#include "VSA.h"
-#include "broadcast.h"
-
-module MACP {
-  provides interface Broadcast;	
+generic module MACP(typedef T, int PERIOD){
+  provides interface Broadcast<T>;	
   uses{
-    interface Packet;
-    //    interface PacketLink;
-    interface AMSend;
+    interface Timer<TMilli> as Timer0;
     interface Receive;
-    interface SplitControl as Control;
+    interface AMSend;
+    interface SplitControl as AMControl;
+    interface Packet;    
+    interface PacketAcknowledgements as Acks;
+    interface Queue<T> as Queue;
   }
 }
 implementation {
-  message_t pkt;
-     
-  command void Broadcast.init() {
-    call Control.start();
-  }
+
+  message_t packet;
+  bool locked = FALSE;
     
-  event void Control.startDone(error_t err) {
-    if (err != SUCCESS) {
-      call Control.start();
-    }	
+  command void Broadcast.init() {
+    call AMControl.start();
   }
-
-  event void Control.stopDone(error_t err) {
-  }       
-	
-  command void Broadcast.bcast(CompleteMessage_t m)
+     
+  event void AMControl.startDone(error_t err) {
+    if (err == SUCCESS) {
+      call Timer0.startPeriodic(PERIOD);
+    }
+    else {
+      call AMControl.start();
+    }
+  }
+ 
+  event void AMControl.stopDone(error_t err) {
+    // do nothing
+  }
+     
+  event void Timer0.fired()
   {
-    message_t *msg =  (message_t*)(call Packet.getPayload(&pkt, sizeof(CompleteMessage_t)));
-    if (msg == NULL) {
-      return;
-    }
-    memcpy(msg, &m, sizeof(CompleteMessage_t));
-    //    call PacketLink.setRetries(msg, MAX_RETRIES);
-    //    call PacketLink.setRelay(msg, RETRY_DELAY);
-    if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(CompleteMessage_t)) != FAIL)
-      {
-    	// call Leds.led1On();
-    	signal  Broadcast.brcv(&m);  // Receiving my own message
-    	dbg("MAC","Broadcast.sent msg= %lu\n", m.msg);
+    T toSend;	      
+    if( locked ) {
+      return;	      
+    }else {	
+      if (!call Queue.empty()) {
+	message_t *msg =  (message_t*)(call Packet.getPayload(&packet, sizeof(T)));
+	if (msg == NULL) {
+	  dbg("BCAST","Error invalid payload size %u \n", sizeof(T));	      
+	  return;
+	}
+	call Acks.requestAck(msg);
+	toSend = call Queue.head();
+	memcpy(msg,&toSend, sizeof(T));	  	
+	if( call AMSend.send( AM_BROADCAST_ADDR, &packet, sizeof( T ) ) == SUCCESS ) {
+	  locked = TRUE;
+	}
       }
-  }
-  
-  event void AMSend.sendDone(message_t* msg, error_t err) {
-  }
-        
-       
-
-  event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len)
-  {	 
-    dbg("MAC","Broadcast.receive receive=%lu\n", len);
-    if (len == sizeof(CompleteMessage_t)) {
-      CompleteMessage_t* m = (CompleteMessage_t*)payload;
-      //call Leds.led0Toggle();
-      signal  Broadcast.brcv(m);
     }
-    return msg;
+  }
+	
+  command void Broadcast.bcast(T m)
+  {
+    dbg("BCAST","Info %lu Broadcast.bcast \n", TOS_NODE_ID);	      
+    if (call Queue.size() < call Queue.maxSize())
+      call Queue.enqueue(m);
+  }
+   
+  event void AMSend.sendDone(message_t* bufPtr, error_t err) {
+    T toSend;
+    if (&packet == bufPtr) {
+      toSend = call Queue.head();
+      signal Broadcast.brcv(&toSend);  
+      call Queue.dequeue();
+      locked = FALSE;
+      dbg("BCAST","Info %lu Broadcast.sendDone \n", TOS_NODE_ID);	      
+    }
+  }
+              
+  event message_t* Receive.receive(message_t* bufPtr, void* payload, uint8_t len) {
+    if (len == sizeof(T)) {		  
+      T* m = (T*)payload;		  
+      dbg("BCAST","Info %lu  Broadcast.receive msg %lu \n", TOS_NODE_ID);	      
+      signal  Broadcast.brcv(m);
+    }	    
+    return bufPtr;
   }
 }

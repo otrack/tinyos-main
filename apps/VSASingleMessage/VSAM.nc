@@ -1,4 +1,4 @@
-//#include "assert.h"
+// #include "assert.h"
 #include "VSA.h"
 #include <Timer.h>
 #include <math.h>
@@ -7,7 +7,7 @@ module VSAM{
   provides interface GVSA;	
   uses{
     interface Timer<TMilli> as   clock;
-    interface Broadcast;
+    interface Broadcast<CompleteMessage_t> as Broadcast;
     interface Leds;
   }
 }
@@ -27,7 +27,8 @@ implementation{
       
   CompleteMessage_t cMessage;
       
-  uint32_t vinit;      
+  uint32_t vinit;
+      
       
   uint8_t   numVSAnbgs;
   uint16_t  ngbs[MAX_VSA_NEIGHBORS];      
@@ -37,8 +38,8 @@ implementation{
   {	
     call Leds.set(s);
     dbg("LEDS","STATUS %lu,%lu\n", TOS_NODE_ID, s);
-    //if (s != 0)
-    //dbg("LEDS","Info STATUS %lu,%lu\n", TOS_NODE_ID, s);		 
+    /* if (s != 0)
+       dbg("LEDS","Info %lu STATUS %lu\n", TOS_NODE_ID, s);		*/ 
 	  
     if (s== LEADER && status != LEADER)
       {
@@ -50,7 +51,7 @@ implementation{
 	cMessage.vduration = now - vinit;
 	//vstate = signal GVSA.VSAendLeadership(&vstate);
       }
-    dbg("SERIAL", "STATUS %lu,%lu\%lu\n", now, vstate.now, vstate.duration);
+    //dbg("SERIAL", "STATUS %lu,%lu\%lu\n", now, vstate.now, vstate.duration);
     status = s;
 	  
   }
@@ -86,6 +87,7 @@ implementation{
 	    cMessage.gvts[i] = guards.gv[i].ts;
 	    cMessage.gvsrc |=  (guards.gv[i].src) << i*ID_bits;		
 	  }
+	      
       }
   }
       
@@ -178,7 +180,6 @@ implementation{
     cMessage.v0 = id;
     bcast();
   }
-
   command void GVSA.sendLaneChange(uint8_t v0, uint8_t v1, uint8_t v2, uint8_t speed)
   {
     createCompleteMessage(START_LANE_CHANGE, reg); // On behalf of the VSA
@@ -200,9 +201,11 @@ implementation{
     cMessage.x = location->x;
     cMessage.y = location->y;
     cMessage.speed = location->speed;
+    cMessage.pressSpeed = location->pressSpeed;
     cMessage.distanceFront = location->distanceFront;
     cMessage.heading = location->heading;				// Heading of the car
     cMessage.lane = location->lane;
+    cMessage.distanceIntersection = location->disJunction;
       
     //cMessage.arrivaltime = at;	  
   }
@@ -213,16 +216,18 @@ implementation{
     CompleteMessage_t m;
     memcpy(&m, ms, sizeof(CompleteMessage_t));
 		  
-	  
     if ((0 < m.src && m.src <= IDS) || isInVSANeighbors(m.src)) 
       {	
 	if (sync)
 	  {
 	    if (signal GVSA.nodebrcv(ms) && holdq.len < MAX_NUM_MESSAGES)
-	      holdq.m[holdq.len++] = m;		
+	      {		  		
+		holdq.m[holdq.len++] = m;		
+	      }
 	  }
 	else
 	  {
+		  
 	    if (m.ts > now)
 	      {
 		call clock.startPeriodicAt(call clock.getNow() - 10,  TIMEUNIT);
@@ -236,7 +241,7 @@ implementation{
   void bcastjoin()
   {
 		  
-    dbg("VSA","bcast(<<join %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
+    //dbg("LEDS","Info bcast(<<join %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
       
     joinreqts = now;	  
     timeslice = now+TSLICE;
@@ -246,13 +251,13 @@ implementation{
     createCompleteMessage(JOIN, TOS_NODE_ID);
     holdq.len = procedq.len = simq.len = joinreqs.len = guards.len  = 0;	    
     bcast();
-    dbg("VSA","trying now=%lu round=%lu, timeslice=%lu \n", now, round, timeslice);
+    //dbg("LEDS","Info trying now=%lu round=%lu, timeslice=%lu \n", now, round, timeslice);
   }
       
   void bcastrestart()
   {	  
     joinreqts = now;
-    dbg("VSA","bcast(<<restart %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
+    dbg("LEDS","Info bcast(<<restart %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
     guards.len = 0;
     createCompleteMessage(RESTART, TOS_NODE_ID);
     bcast();     	
@@ -265,7 +270,7 @@ implementation{
     GV_t gv;
     CompleteMessage_t ms;
 	
-    dbg("VSACode","delayrcv %lu, %lu\n", msg.msg, msg.reg);	   
+    //dbg("LEDS","Info delayrcv %lu, %lu\n", msg.msg, msg.reg);	   
     if (RESTART == msg.msg)
       {	
 	if (reg == msg.reg)
@@ -276,8 +281,11 @@ implementation{
 		if (guards.len > K)
 		  guards.len = K;	      
 	      }
-	    else 
-	      set(STARTJOIN);
+	    else
+	      {
+		//dbg("LEDS", "Info %lu in STARTJOIN status because TRYING != status and %lu round > now %lu\n", TOS_NODE_ID, round, now);
+		set(STARTJOIN);
+	      }
 	  }
       }
     else if (JOIN == msg.msg)
@@ -293,7 +301,7 @@ implementation{
       {	  
 	if (msg.msg != END)
 	  {
-	    dbg("VSACode","simq <- simq U {m}\n");
+	    //dbg("VSACode","simq <- simq U {m}\n");
 	    if (reg == msg.reg && simq.len < MAX_SIM_MESSAGES)
 	      simq.m[simq.len++] = msg;
 	  }
@@ -304,12 +312,14 @@ implementation{
 	uint32_t Test;
 	uint8_t Index;
 	    
-	if (guards.len > 0 && (msg.gvsrc  & 0x7) !=  guards.gv[0].src)
-	      
-	  set(STARTJOIN);
+	if (guards.len > 0 && msg.ghead !=  guards.gv[0].src)
+	  {	      
+	    set(STARTJOIN);
+	    //dbg("LEDS", "Info %lu in STARTJOIN status because %lu is not in the header %lu\n", TOS_NODE_ID, guards.gv[0].src, msg.ghead );
+	  }
 	if (status != LEADER)
 	  {
-	    dbg("VSACode","simq <- simq U {m}\n");
+	    //dbg("LEDS","Info simq <- simq U {m}\n");
 	    vstate.duration = msg.vduration; 
 	    vstate.now = msg.vnow;
 	    vstate.state = msg.vstate;
@@ -367,7 +377,10 @@ implementation{
 	      }
 	  }
 	else if (joinreqts < msg.ts-D)
-	  set(STARTJOIN);
+	  {
+	    //dbg("LEDS", "Info %lu in STARTJOIN status because %lu is less than  %lu\n", TOS_NODE_ID, joinreqts, msg.ts-D);
+	    set(STARTJOIN);   
+	  }
 	if (msg.msg == END) 
 	  leadup = TRUE;  
       }
@@ -378,13 +391,14 @@ implementation{
   {
     GV_t gv;
     uint8_t i;
-    //dbg("VSA OUTPUT","tsBegin: NOW=%lu ROUND=%lu, STATUS=%lu\n", now, round, status); 	  
+    //dbg("LEDS","Info %lu tsBegin: NOW=%lu ROUND=%lu\n", TOS_NODE_ID,now, round); 	  
     if (GUARD == status)
       {	      	      
-	gv = guards.gv[0];
+	//dbg("LEDS","Info %lu tsBegin: Guard=%lu leadup=%lu\n", TOS_NODE_ID,guards.gv[0].src, leadup); 	  
+	gv = guards.gv[0];	      
+	for (i=1; i<guards.len; i++)
+	  guards.gv[i-1] = guards.gv[i];
 	if (guards.len > 0)  guards.len--;
-	for (i=0; i<guards.len; i++)
-	  guards.gv[i] = guards.gv[i+1];
 	if (leadup)
 	  guards.gv[guards.len++] = gv;	      
       } 	   
@@ -394,11 +408,11 @@ implementation{
 	vstate = startu;
 	simq.len = joinreqs.len = 0;	      
 	set(GUARD);
-	dbg("VSA OUTPUT","Node %lu becomes GUARD at %lu of region %lu\n", TOS_NODE_ID, now, reg);
+	//dbg("LEDS","Info Node %lu becomes GUARD  at %lu of region %lu\n", TOS_NODE_ID, now, reg);
       }
     if (GUARD == status  && guards.gv[0].src == TOS_NODE_ID && guards.gv[0].ts == joinreqts)
       {
-	dbg("VSA OUTPUT","Node %lu becomes LEADER at %lu of region %lu\n", TOS_NODE_ID, now, reg);
+	//dbg("LEDS","Info Node %lu becomes LEADER at %lu of region %lu\n", TOS_NODE_ID, now, reg);
 	set(LEADER);
       }
     leadup = FALSE;
@@ -474,23 +488,25 @@ implementation{
   void bcastend()
   {
     uint8_t i;	  
+    //dbg("LEDS","Info Node %lu ends leadership at %lu of region %lu and becomes GUARD \n", TOS_NODE_ID, now, reg);
+    cMessage.ghead = guards.gv[0].src;
     set(GUARD);
-    dbg("VSA OUTPUT","Node %lu becomes GUARD at %lu of region %lu\n", TOS_NODE_ID, now, reg);
     createCompleteMessage(END, reg);	   	  
     bcast();
-    leadup = TRUE;
+	 
+    //leadup = TRUE;
   }
     
   event void clock.fired(){ 
     CompleteMessage_t  msg;
     CompleteMessage_t  ms;
     uint8_t i,len;
-    
+	   
     now = now + 1;
     signal GVSA.Clock(now);
 	   
     if (sync == FALSE)
-      {
+      {	      
 	set(NULLSTATE);
 	steps++;
 	if (steps == MAXSYNCTRIES)
@@ -562,7 +578,7 @@ implementation{
       }
     if (vstate.now > now)   
       vstate.now = now;	   	   
-             		    
+               		    
     if (STARTJOIN == status)  // bcast(<JOIN>)
       bcastjoin();
     else if (TRYING == status && round == now)   // bcast(<restart>)
@@ -574,6 +590,7 @@ implementation{
     for(i=0; i<len; i++)
       {	    	      	      	     
 	msg = holdq.m[i]; 
+	//dbg("LEDS", "Info %lu checking time %lu for delayrcv  %lu\n", TOS_NODE_ID, msg.ts, now - D);
 	if (msg.ts == now - D)
 	  delayrcv(msg);
 	else if (now - D < msg.ts && msg.ts <= now)
@@ -608,7 +625,8 @@ implementation{
 	    joinreqs.len == 0)  
 	  bcastend();						
       }
+    if (status == LEADER)
+      signal GVSA.VSAclock(&vstate);       		
   }
 	
 }
-

@@ -10,11 +10,10 @@ import subprocess
 import re
 import path
 import car
-
+# from CarCommands import *
+from tinyos.message import MoteIF
 from pyglet.window import key
 
-
- 
  
 myBuffer = ""
 
@@ -26,9 +25,7 @@ f = open("pipe", 'w')
 f1 = open("pipe", 'r')
 car.tossim.addChannel("LEDS",f)
 car.tossim.addChannel("SERIAL", sys.stdout);
-car.tossim.addChannel("VSA OUTPUT", sys.stdout);
-car.tossim.addChannel("LOG", sys.stdout);
-
+# car.tossim.addChannel("BCAST", sys.stdout);
 
 keys = key.KeyStateHandler()
 win = pyglet.window.Window()
@@ -59,6 +56,7 @@ if TestCase == "2":
   
   for i in range(0, CARS):	
     m.append(car.tossim.getNode(i+1))
+  
   cars = []
   cars.append(car.Car(1, 2, 0, 2, route, route, m[0]))
   cars.append(car.Car(2, 7, 0, 2, route, route, m[1]))
@@ -138,8 +136,7 @@ else:
   cars.append(car.Car(1, 0, 0, 7, route, route, m[0]))
   cars.append(car.Car(2, 0, 0, 4, route, route, m[1]))
   cars.append(car.Car(3, 0, 0, 1, route, route, m[2]))		      
-
- 
+  
 
 cars[0].active = True
 
@@ -172,6 +169,9 @@ scale =5
 tranx =375
 trany =200
 active = 0
+
+glClearColor(0.2,  0.4,  0.5,  1.0)
+
 
 @win.event
 def on_key_press(symbol, modifiers):  
@@ -222,21 +222,27 @@ def on_key_press(symbol, modifiers):
     #cars[active].tryChanginLanes = True
   
   
-
-# Pierre : periodic timer to simulate the events processing ?
  
 @win.event
 def on_draw():	
-   # Clear buffers
+	# Clear buffers
     global pause, scale
-        
+    
+    
     if not pause:
+        #print "Reading form serial", am.read()
+        
 	myBuffer =  f1.readlines()	
 	if len(myBuffer) > 0:
 	  for line in myBuffer:
 	    mm = re.split(r".*STATUS (\d),(\d)", line)
 	    if len(mm) > 1:
 	      status[int(mm[1])-1] = mm[2]
+	      
+	    mm = re.split(r".*setSafetyDistance (\d),(\d)", line)
+	    if len(mm) > 1:
+	     print  " cars[ ", int(mm[1])-1, "].setSafetyDistance(", int(mm[2]), ")"
+	     cars[int(mm[1])-1].setSafetyDistance(int(mm[2]))
 	    mm = re.split(r".*SetPlatoon (\d),(\d)", line)
 	    if len(mm) > 1:
 	     print  " cars[ ", int(mm[1])-1, "].pushMode(", int(mm[2])/100.0, " 2)"
@@ -289,3 +295,6 @@ glBlendFunc(GL_ONE, GL_ONE);
 
 
 pyglet.app.run()
+
+
+

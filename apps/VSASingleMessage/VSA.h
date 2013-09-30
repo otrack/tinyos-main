@@ -1,8 +1,11 @@
 #ifndef VSA_H
 #define VSA_H
 
-//#define 		SIM 0
+// Broadcast parameters
+#define BCAST_MSG_QUEUE_SIZE 20
+#define BCAST_PERIOD 3
 
+//#define 		SIM 0
 
 #define AM_BROADCAST  0x88
 #define MAXSYNCTRIES   2
@@ -11,12 +14,12 @@
 #define IDS	     4 		// Max number of vehicles
 #define IDVSAS	     1	 	// Max number of regions
 #define MAX_VSA_NEIGHBORS 1
-#define TIMEUNIT     20        // INTERVAL  
+#define TIMEUNIT     40        // INTERVAL  
 
 #define D 	     1        // Delay
 #define K	     3        // Num of Guards
-#define E	     33       // Difference between real and virtual time
-#define TSLICE       10      //  D < TSLICE <= E/K (constant)
+#define E	     6       // Difference between real and virtual time
+#define TSLICE       2      //  D < TSLICE <= E/K (constant)
 
 
 #define MAX_NUM_MESSAGES     7	      //
@@ -70,7 +73,7 @@ typedef struct GV
 #endif
 
 
-typedef nx_struct SINGEMESSAGE
+typedef nx_struct SINGLEMESSAGE
 {
   nx_uint32_t     	ts;
   nx_uint8_t     	src;
@@ -145,6 +148,7 @@ typedef struct CompleteMessage
     uint8_t		v0	: ID_bits;		// v is allowed to change lanes between v0,v1
     uint8_t		v1	: ID_bits;
     uint8_t		v2	: ID_bits;
+    uint8_t		ghead	: ID_bits;
 } CompleteMessage_t;
 
 

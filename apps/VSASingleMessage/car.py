@@ -18,7 +18,7 @@ LIMITSPEED = 12.0/100.0   # M/mill
 MAXSTEER = math.pi/40.0
 ACCELERATION = 0.0008
 DESACCELERATION = 0.001
-REFRESH = 5
+REFRESH = 40
 
 TIME = 0
 
@@ -131,10 +131,6 @@ class Car:
     self.headway = 4
     self.platoon = False
     
-   
-    
-    
-  
   
   def addSensor(self, orientation, angle, R):
     self.sensors.append(Sensor(orientation, angle, R))
@@ -144,6 +140,9 @@ class Car:
   
   def setPlatoon(self):
     self.platoon = True;
+    
+  def setSafetyDistance(self, d):
+    self.headway = d;
       
   def pushMode(self, Speed, Headway) :
     self.operMode.append([self.pressSpeed, self.headway])   
@@ -160,8 +159,6 @@ class Car:
     
   def newSpeed(self) :
     if self.platoon and self.front.id != 0:
-      
-     
       self.speedwithobstacles = max(self.pressSpeed + ((self.front.distance-self.headway )/(REFRESH*10)), 0);
       
       #print self.id, self.cv2, self.front.distance, self.speedwithobstacles      
