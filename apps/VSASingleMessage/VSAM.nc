@@ -180,7 +180,6 @@ implementation{
     cMessage.v0 = id;
     bcast();
   }
-
   command void GVSA.sendLaneChange(uint8_t v0, uint8_t v1, uint8_t v2, uint8_t speed)
   {
     createCompleteMessage(START_LANE_CHANGE, reg); // On behalf of the VSA

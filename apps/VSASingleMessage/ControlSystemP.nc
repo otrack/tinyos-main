@@ -24,8 +24,6 @@ implementation{
   PPInterval_t ppInterval; 
   uint32_t lcstart; 
       
-  /*    uint32_t arrivalTimes[IDS];*/
-      
   CarsData_t carData[IDS];
   uint32_t now;
   uint8_t  laneChangeRole[3];
@@ -33,7 +31,8 @@ implementation{
   uint8_t  originalChangeSpeed;
   uint32_t timeout;
   uint32_t timeout2;
-      
+
+  // UTILS
   inline uint32_t distance2(uint8_t i, uint8_t j)
   {
     return (carData[i].x -carData[j].x)*(carData[i].x -carData[j].x) +   
@@ -66,29 +65,13 @@ implementation{
     laneChangeRole[1] = 2;
     laneChangeRole[2] = 0;
   }    
-      
-  /////////////CAR            
-  // Receive location,heading,speed from the vehicle
-  event message_t* Car.receive(message_t* msg, void* payload, uint8_t len){
-    dbg("log","ControlSystem.receive %lu, %lu \n", len, sizeof(PKTLocation_t));
-    //dbg("LEDS", "Info Getting  size %lu %lu %lu\n", sizeof(PKTLocation_t) , len, sizeof(CompleteMessage_t));
-    if(sizeof(PKTLocation_t) == len){	
-	  
-      PKTLocation_t* rx_pkt = (PKTLocation_t*)payload;
-	   	    	   
-      call GVSA.GPSUpdate(IDS+1, rx_pkt);	
-    }
-    return msg;
-  }	
-      
-      
-      
+            
+  // VSA
   event void GVSA.Clock(uint32_t n)
   { 
     CarCommands_t carC;
     bool inInterval = FALSE;
     now = n;
-	  
     if (ppInterval.length > 0)
       {
 	if (ppInterval.ppStart[0] <= now && now <= ppInterval.ppStart[0] +PLATOON_INTERVAL)
@@ -114,19 +97,28 @@ implementation{
 	modeOfOperation  &= ~PLATOON_MODE;  
 	carC.msg = STOPPLATOON;
 	call Car.SendCommand(carC);
-	//dbg("LEDS", "Info End of platoon interval %lu %lu\n", now, ppInterval.length);
+	dbg("CONTROLSYSTEM", "Info end of platoon interval %lu %lu\n", now, ppInterval.length);
       }
-	  
-    if (0 < carData[TOS_NODE_ID].distanceIntersection && 
-	carData[TOS_NODE_ID].distanceIntersection <= 3  
-	&& !(modeOfOperation & COOPERATIVE_INTERSECTION_MODE))
+    
+    if (!(modeOfOperation & COOPERATIVE_INTERSECTION_MODE))
       {
-	carC.msg = SETSPEED;
-	carC.param1 = carData[TOS_NODE_ID -1 ].pressSpeed / 2.0;
-	call Car.SendCommand(carC);
-      }	  
- 	  
-	  
+	// Reduce speed when crossing w.o. coordination
+	if (0 < carData[TOS_NODE_ID].distanceIntersection && 
+	    carData[TOS_NODE_ID].distanceIntersection <= 3)
+	  {
+	    carC.msg = SETSPEED;
+	    carC.param1 = carData[TOS_NODE_ID -1].pressSpeed / 2.0;
+	    call Car.SendCommand(carC);
+	  }
+	// increase speed if no intersection, no coordination and no platoon
+	else if  ((carData[TOS_NODE_ID -1].pressSpeed < MAXSPEED) & (!(modeOfOperation & PLATOON_MODE)))
+	  {
+	    carC.msg = SETSPEED;
+	    carC.param1 = carData[TOS_NODE_ID -1].pressSpeed + (MAXSPEED - carData[TOS_NODE_ID -1].pressSpeed)/2;
+	    call Car.SendCommand(carC);      
+	  }
+      }
+    
     if (timeout > 0 && modeOfOperation & LANECHANGE)
       {	    
 	//if (distance2(laneChangeRole[0], laneChangeRole[2]) > 4)
@@ -168,7 +160,8 @@ implementation{
 		modeOfOperation |= LANECHANGEINPROGRESS;
 	      }
 	    timeout--;
-	  }	    
+	  }
+
 	if (timeout == 0 || carData[laneChangeRole[1]].lane == carData[laneChangeRole[0]].lane)
 	  {		
 	    modeOfOperation &= ~LANECHANGEINPROGRESS;
@@ -178,23 +171,19 @@ implementation{
 	    call Car.SendCommand(carC);
 	    carC.msg = SETSAFETYDISTANCE;
 	    carC.param1 = 3;
-	    call Car.SendCommand(carC);
-		
-	    dbg("LEDS", "Info %lu returning original speed %lu\n", TOS_NODE_ID, originalChangeSpeed);
+	    call Car.SendCommand(carC);		
+	    dbg("CONTROLSYSTEM", "Info %lu returning original speed %lu\n", TOS_NODE_ID, originalChangeSpeed);
 	  }
       }
-	  
-	  
-	  
+	 
     call GVSA.bcastNode(POSITION);
     //alignSpeeds();
   }
      
-     
-	  
   event bool GVSA.nodebrcv(CompleteMessage_t *ms)
   {
     CompleteMessage_t msg; 
+    CarCommands_t carC;
     memcpy(&msg, ms, sizeof(CompleteMessage_t));
     //if (POSITION != msg.msg)
     //  dbg("LEDS", "Info %lu receiving message %lu\n", TOS_NODE_ID, msg.msg);
@@ -237,8 +226,10 @@ implementation{
 	if (msg.v0 == TOS_NODE_ID)
 	  {
 	    modeOfOperation |= COOPERATIVE_INTERSECTION_MODE;
-	    dbg("LEDS", "Info Receiving Coordination %lu,%lu\n", msg.v0, msg.pressSpeed);
-	    dbg("LEDS", "SetSpeed %lu,%lu\n", TOS_NODE_ID, msg.pressSpeed);
+	    dbg("CONTROLSYSTEM", "Info receiving coordination %lu, new speed %lu\n", msg.v0, msg.pressSpeed);
+	    carC.msg = SETSPEED;
+	    carC.param1 = msg.pressSpeed;
+	    call Car.SendCommand(carC);
 	  }
 	return FALSE;
       }	   
@@ -248,11 +239,14 @@ implementation{
 	laneChangeRole[0] = msg.v0;
 	laneChangeRole[1] = msg.v1;
 	laneChangeRole[2] = msg.v2;
-	dbg("LEDS", "Info Lane Change cars %lu,%lu,%lu\n", laneChangeRole[0],laneChangeRole[1], laneChangeRole[2]);
+	dbg("CONTROLSYSTEM", "Info lane change cars %lu,%lu,%lu\n", laneChangeRole[0],laneChangeRole[1], laneChangeRole[2]);
 	laneChangeSpeed = msg.pressSpeed;
 	originalChangeSpeed = laneChangeSpeed;
-	dbg("LEDS", "SetSpeed %lu,%lu\n", TOS_NODE_ID, laneChangeSpeed);
-	//dbg("LEDS", "Info %lu preparing for lane change %lu,%lu\n", TOS_NODE_ID, msg.start, laneChangeSpeed);
+	carC.msg = SETSPEED;
+	carC.param1 = laneChangeSpeed;
+	call Car.SendCommand(carC);
+	// dbg("CONTROLSYSTEM", "Info SetSpeed %lu,%lu\n", TOS_NODE_ID, laneChangeSpeed);
+	// dbg("LEDS", "Info %lu preparing for lane change %lu,%lu\n", TOS_NODE_ID, msg.start, laneChangeSpeed);
 	modeOfOperation |= LANECHANGE;
 	timeout = 30;
 	return FALSE;
@@ -261,12 +255,22 @@ implementation{
   }
       
       
-  ///////////// Coordinator            
+  // COORDINATOR
+  event message_t* Car.receive(message_t* msg, void* payload, uint8_t len){
+    // dbg("CONTROLSYSTEM","Info ControlSystem.receive %lu, %lu \n", len, sizeof(PKTLocation_t));
+    if(sizeof(PKTLocation_t) == len){		  
+      PKTLocation_t* rx_pkt = (PKTLocation_t*)payload;
+      call GVSA.GPSUpdate(IDS+1, rx_pkt);	
+    }
+    return msg;
+  }	
+
   event Vstate_t  GVSA.transition(Vstate_t *vstate, uint8_t m)
   {
     state =*vstate;
     return state;
   }
+
   event Vstate_t GVSA.VSAbrcv(Vstate_t *vstate, uint8_t m)
   {	
     state = *vstate;
@@ -285,14 +289,14 @@ implementation{
 	    if (carData[i].distanceIntersection > 3)
 	      {
 		coordinationRequired |= TRUE;
-		for (j=0; j<IDS; j++)
+		for (j=i+1; j<IDS; j++)
 		  {
-		    if (carData[j].distanceIntersection > 0 && i !=  j) 
+		    if (carData[j].distanceIntersection > 0 ) 
 		      {
 			float t1 = (float)carData[i].distanceIntersection/(float)carData[i].pressSpeed;
 			float t2 = (float)carData[j].distanceIntersection/(float)carData[j].pressSpeed;
-			dbg("COORDINATION", "Time before intersection %u -> %f \n", i, t1);
-			dbg("COORDINATION", "Time before intersection %u -> %f \n", j, t2);
+			dbg("CONTROLSYSTEM", "Info time before intersection %u -> %f \n", i, t1);
+			dbg("CONTROLSYSTEM", "Info time before intersection %u -> %f \n", j, t2);
 			if (abs(t1 - t2) < TIMEBETWEENCROSSING)		 
 			  {		      	
 			    float speed;
@@ -307,7 +311,7 @@ implementation{
 				speed = (float)(carData[v].distanceIntersection) / (t1+(float)TIMEBETWEENCROSSING);		      
 			      }
 			    call GVSA.sendCoordination(v+1, (uint8_t)speed);
-			    dbg("COORDINATION", "Sending Coordination %lu,%lu \n", v, (uint8_t)speed);
+			    dbg("CONTROLSYSTEM", "Info sending Coordination %lu, new speed %lu \n", v+1, (uint8_t)speed);
 			    vstate->state |= COOPERATIVE_INTERSECTION_MODE;
 			  }
 		      }
@@ -317,8 +321,8 @@ implementation{
       }
 
     if (!coordinationRequired)
-      dbg("COORDINATION", "No coorddination required. \n");
-      vstate->state &= ~COOPERATIVE_INTERSECTION_MODE;
+      dbg("CONTROLSYSTEM", "No coordination required. \n");
+    vstate->state &= ~COOPERATIVE_INTERSECTION_MODE;
   }
 
       
@@ -338,7 +342,7 @@ implementation{
 	vstate->state |=  PLATOON_MODE;
 	vstate->start = vstate->now+2*D;   
 	call GVSA.sendPlatoonMode(f(0,0));
-	dbg("LEDS", "Info Cars will start platoon mode %lu %lu %lu\n", TOS_NODE_ID, vstate->start, vstate->platoon );
+	dbg("LEDS", "Info cars will start platoon mode %lu %lu %lu\n", TOS_NODE_ID, vstate->start, vstate->platoon );
       }
     else if (tr && (vstate->state & PLATOON_MODE))
       {  	  
@@ -408,7 +412,7 @@ implementation{
 	    for (i=0; i<num[lane]; i++)
 	      {
 		car1 = carlane[lane][i];
-		dbg("PLATOON", "Info %lu on lane %lu and %lu\n", car1, lane, carData[car1].distanceFront);	    
+		dbg("CONTROLSYSTEM", "Info %lu on lane %lu and %lu\n", car1, lane, carData[car1].distanceFront);	    
 		if (carData[car1].distanceFront <= 6 && carData[car1].distanceFront > 0)
 		  {			 
 		    vstate->platoon  |=  1 << car1;
@@ -488,7 +492,7 @@ implementation{
   {	  
     //if (vstate->duration == 0)
     //return FALSE;
-    processCoordination(vstate);
+    // processCoordination(vstate);
     processPlatoon(vstate);
 
     state =*vstate;
