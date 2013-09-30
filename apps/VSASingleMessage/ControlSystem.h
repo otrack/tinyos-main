@@ -1,8 +1,5 @@
-
 #ifndef CONTROLSYSTEM_H
 #define CONTROLSYSTEM_H
-
-#define MAXSPEED 1
 
 #ifdef PLATFORM_MICAZ
 #define powf pow
@@ -10,7 +7,9 @@
 #include "StorageVolumes.h"
 #endif
 
+#include "car.h"
 
+#define MAXSPEED 60
 #define Tr 100
 #define INF 1000
 
@@ -18,13 +17,6 @@
 #define HPP 1.5
 
 #define TIMEBETWEENCROSSING 0.5
-
-
-
-typedef struct CarCommands{	
-	uint8_t    msg;
-	uint8_t	   param1;
-} CarCommands_t;
 
 typedef struct CarData {
 	float 		x;
@@ -41,8 +33,7 @@ typedef struct CarData {
 } CarsData_t;
 
 #pragma pack(push,1)
-typedef struct Location {
-    
+typedef struct Location {    
 	float x;
 	float y;	
 	uint8_t pressSpeed;
@@ -87,14 +78,6 @@ enum {
 enum {
   WANTS_TO_CHANGE_LANE = 1,
   MAKE_SPACE = 2
-};
-
-enum {
-  STARTPLATOON = 1,
-  STOPPLATOON,
-  SETSPEED,
-  SETLANECHANGE,
-  SETSAFETYDISTANCE,
 };
 
 
