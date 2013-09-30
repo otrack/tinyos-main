@@ -26,6 +26,7 @@ f1 = open("pipe", 'r')
 car.tossim.addChannel("LEDS",f)
 car.tossim.addChannel("SERIAL", sys.stdout);
 # car.tossim.addChannel("BCAST", sys.stdout);
+car.tossim.addChannel("COORDINATION", sys.stdout);
 
 keys = key.KeyStateHandler()
 win = pyglet.window.Window()
@@ -41,7 +42,7 @@ m=[]
 
 
 if TestCase == "2":
-  CARS = 2
+  CARS = 3
   route.append(0, 23.3)
   route.append(-1, 4*math.pi/6)
   route.append(0, 1.5)
@@ -60,6 +61,7 @@ if TestCase == "2":
   cars = []
   cars.append(car.Car(1, 2, 0, 2, route, route, m[0]))
   cars.append(car.Car(2, 7, 0, 2, route, route, m[1]))
+  cars.append(car.Car(3, 0, 0, 0, route, route, m[2]))
   
   
 elif TestCase == "3":  
