@@ -32,7 +32,11 @@ implementation{
   uint32_t timeout;
   uint32_t timeout2;
 
-  // UTILS
+  //
+  // CONTROL SYSTEM FUNCTIONS
+  //
+
+
   inline uint32_t distance2(uint8_t i, uint8_t j)
   {
     return (carData[i].x -carData[j].x)*(carData[i].x -carData[j].x) +   
@@ -51,6 +55,215 @@ implementation{
       }
     return 60;
   }
+
+  bool health(uint32_t t)
+  {
+    return t >= now-D-2;
+  }      
+
+  void stateMachinePlatoon(bool tr, Vstate_t *vstate)
+  {
+    //dbg("LEDS", "Info  stateMachinePlatoon %lu, %lu %lu\n", (vstate->state & PLATOON_MODE), tr, ppInterval.length == 0);	       
+    if ((tr && !(vstate->state & PLATOON_MODE)) || (ppInterval.length == 0 && tr))
+      {
+	//speed = f(a);
+	//headway = g(a);
+	vstate->state |=  PLATOON_MODE;
+	vstate->start = vstate->now+2*D;   
+	call GVSA.sendPlatoonMode(f(0,0));
+	dbg("LEDS", "Info cars will start platoon mode %lu %lu %lu\n", TOS_NODE_ID, vstate->start, vstate->platoon );
+      }
+    else if (tr && (vstate->state & PLATOON_MODE))
+      {  	  
+	//speed = f(a);
+	//headway = g(a);
+	if (ppInterval.length <= 1  && ppInterval.ppStart[0]  < now)  
+	  {
+	    vstate->state |=  PLATOON_MODE;
+	    vstate->start = ppInterval.ppStart[0] + PLATOON_INTERVAL;   
+	    call GVSA.sendPlatoonMode(f(0,0));
+	    //dbg("LEDS", "Info Cars will Continue platoon mode %lu %lu %lu\n", TOS_NODE_ID, vstate->start, vstate->platoon );
+	  }
+	//else
+	//dbg("LEDS", "Info Checking platton %lu %lu\n", TOS_NODE_ID, ppInterval.ppStart[0], now);
+
+      }
+    else if (!tr && (vstate->state & PLATOON_MODE))
+      {
+	vstate->state &= ~PLATOON_MODE;
+	call GVSA.sendPlatoonMode(f(0,0));
+	//dbg("LEDS", "Info Cars will return to cruise control mode %lu %lu\n", TOS_NODE_ID, vstate->state);
+      }
+    /*else if (!tr && !(vstate->state & PLATOON_MODE))
+      {
+      dbg("LEDS", "Info Cars will continue in cruise control mode %lu %lu %lu\n", TOS_NODE_ID, vstate->state, tr);
+      } */
+	
+  }
+
+  void processPlatoon(Vstate_t *vstate)
+  {
+    uint8_t i,j, car1, car2, car3, p;
+	  
+    uint8_t count=0;
+    uint8_t lane, lane2;
+    uint8_t carlane[NUMLANES][IDS];
+    uint8_t num[NUMLANES];
+    uint32_t c1c2, c1c3, c2c3;
+    uint32_t d1; 
+	  
+    c1c2 = 0xffffff;
+    c1c3 = 0xffffff;
+    c2c3 = 0xffffff;
+	  
+    for (lane=0; lane<NUMLANES; lane++)
+      num[lane] = 0;	  	
+	  
+    for (i=0; i<IDS-1; i++)
+      {
+	if (!health(carData[i].ts))
+	  return;
+	carlane[carData[i].lane][num[carData[i].lane]++] = i;
+	//dbg("LEDS", "Info %lu in lane %lu\n", i, carData[i].lane);	       
+      }
+    count = 0;
+    vstate->platoon = 0;
+    /// Check for platoon
+
+    for (lane = 0; lane < NUMLANES; lane++)  // Sort the cars by 
+      {
+	     
+	if (num[lane]>=2)
+	  {
+	    for (i=0; i<num[lane]; i++)
+	      {
+		car1 = carlane[lane][i];
+		dbg("CONTROLSYSTEM", "Info %lu on lane %lu and %lu\n", car1, lane, carData[car1].distanceFront);	    
+		if (carData[car1].distanceFront <= 6 && carData[car1].distanceFront > 0)
+		  {			 
+		    vstate->platoon  |=  1 << car1;
+		    count++;
+			  
+		  }
+		else if (carData[car1].distanceFront == 0xf) // one in front?
+		  {	
+		    for (j=0; j<num[lane]; j++)
+		      {
+			car2 = carlane[lane][j];
+			if (car1 != car2)
+			  { 		     	
+			    if (abs(distance2(car1, car2) - 
+				    carData[car2].distanceFront*carData[car2].distanceFront) <= 4)
+			      {
+				vstate->platoon  |=  1 << car1;
+				count++;
+				break;
+			      }
+			  }
+		      }
+		  }		  
+		      
+		if (count >= 3)
+		  stateMachinePlatoon(count >= 3, vstate);		             
+	      } 
+	  }	 
+      }
+    if (vstate->state & LANECHANGE)
+      return;
+    lane = num[0] <= num[1] ? 0 : 1;
+    lane2 = num[0] > num[1] ? 0 : 1;
+    car2 = 0xff;
+    car3 = 0xff;
+    if (num[lane]>0 && num[lane2]>0)
+      {
+	for (i=0; i<num[lane]; i++)
+	  {
+	    car1 = carlane[lane][i];
+	    if (carData[car1].distanceFront == 0xf)  /// only the header can change lanes
+	      {			    
+		for (j=0; j<num[lane2]; j++)
+		  {
+		    p = carlane[lane2][j];
+		    d1 = distance2(car1, p);
+		    if (carData[p].distanceFront == 0xf && d1 < c1c3)
+		      {
+			c1c3 = d1;
+			car3 = p; 
+		      }
+		    else  if (carData[p].distanceFront < 0xf && d1 < c1c2)
+		      {
+			c1c2 = d1;
+			car2 = p; 
+		      }
+		  }
+		c2c3 = distance2(car2, car3);
+		if (c1c2 > c1c3 &&   c1c2*c1c2 <= c2c3*c2c3 + c1c3*c1c2 && 
+		    // if (c1c2 > c1c3 &&  c1c3 < c2c3*3 && //   c1c2 < c1c3 + c2c3 && 
+		    //abs(c2c3 - carData[car2].distanceFront*carData[car2].distanceFront) <= 4 && 
+		    carData[car2].pressSpeed > 0)
+		  {
+		    vstate->state |= LANECHANGE;
+		    vstate->start = vstate->now+2;
+		    dbg("LEDS", "Info %lu will merge %lu,  %lu\n", car1, car3, car2);	       
+		    call GVSA.sendLaneChange(car2, car1, car3, carData[car2].pressSpeed);
+		    timeout2 = 50;
+		  }
+	      }
+	  }	 	     		
+      }
+  }
+
+  void processCoordination(Vstate_t *vstate)
+  {
+    uint8_t i,j, v;
+    bool coordinationRequired = FALSE;
+	 	  
+    for (i=0; i<IDS-1; i++)
+      {
+	if ( !(vstate->state & COOPERATIVE_INTERSECTION_MODE) )
+	  {
+	    if (carData[i].distanceIntersection > 3)
+	      {
+		coordinationRequired |= TRUE;
+		for (j=i+1; j<IDS; j++)
+		  {
+		    if (carData[j].distanceIntersection > 0 ) 
+		      {
+			float t1 = (float)carData[i].distanceIntersection/(float)carData[i].pressSpeed;
+			float t2 = (float)carData[j].distanceIntersection/(float)carData[j].pressSpeed;
+			dbg("CONTROLSYSTEM", "Info time before intersection %u -> %f \n", i, t1);
+			dbg("CONTROLSYSTEM", "Info time before intersection %u -> %f \n", j, t2);
+			if (abs(t1 - t2) < TIMEBETWEENCROSSING)		 
+			  {		      	
+			    float speed;
+			    if (t1 <= t2)	
+			      {
+				v = j;
+				speed = (float)(carData[v].distanceIntersection) / (t2+(float)TIMEBETWEENCROSSING);		
+			      }
+			    else
+			      {
+				v = i;			    
+				speed = (float)(carData[v].distanceIntersection) / (t1+(float)TIMEBETWEENCROSSING);		      
+			      }
+			    call GVSA.sendCoordination(v+1, (uint8_t)speed);
+			    dbg("CONTROLSYSTEM", "Info sending Coordination %lu, new speed %lu \n", v+1, (uint8_t)speed);
+			    vstate->state |= COOPERATIVE_INTERSECTION_MODE;
+			  }
+		      }
+		  }
+	      }
+	  }	
+      }
+
+    if (!coordinationRequired)
+      dbg("CONTROLSYSTEM", "No coordination required. \n");
+    vstate->state &= ~COOPERATIVE_INTERSECTION_MODE;
+  }
+
+  //
+  // CONTROL SYSTEM COMMANDS & EVENTS
+  //
      
   event void Boot.booted() {
     Vstate_t startu;
@@ -66,7 +279,6 @@ implementation{
     laneChangeRole[2] = 0;
   }    
             
-  // VSA
   event void GVSA.Clock(uint32_t n)
   { 
     CarCommands_t carC;
@@ -110,7 +322,7 @@ implementation{
 	    carC.param1 = carData[TOS_NODE_ID -1].pressSpeed / 2.0;
 	    call Car.SendCommand(carC);
 	  }
-	// increase speed if no intersection, no coordination and no platoon
+	// Increase speed if no intersection, no coordination and no platoon
 	else if  ((carData[TOS_NODE_ID -1].pressSpeed < MAXSPEED) & (!(modeOfOperation & PLATOON_MODE)))
 	  {
 	    carC.msg = SETSPEED;
@@ -245,7 +457,7 @@ implementation{
 	carC.msg = SETSPEED;
 	carC.param1 = laneChangeSpeed;
 	call Car.SendCommand(carC);
-	// dbg("CONTROLSYSTEM", "Info SetSpeed %lu,%lu\n", TOS_NODE_ID, laneChangeSpeed);
+	dbg("CONTROLSYSTEM", "Info %lu, new speed %lu\n", TOS_NODE_ID, laneChangeSpeed);
 	// dbg("LEDS", "Info %lu preparing for lane change %lu,%lu\n", TOS_NODE_ID, msg.start, laneChangeSpeed);
 	modeOfOperation |= LANECHANGE;
 	timeout = 30;
@@ -254,8 +466,6 @@ implementation{
     return TRUE;
   }
       
-      
-  // COORDINATOR
   event message_t* Car.receive(message_t* msg, void* payload, uint8_t len){
     // dbg("CONTROLSYSTEM","Info ControlSystem.receive %lu, %lu \n", len, sizeof(PKTLocation_t));
     if(sizeof(PKTLocation_t) == len){		  
@@ -276,233 +486,22 @@ implementation{
     state = *vstate;
     return state;
   }
-      
-  void processCoordination(Vstate_t *vstate)
-  {
-    uint8_t i,j, v;
-    bool coordinationRequired = FALSE;
-	 	  
-    for (i=0; i<IDS-1; i++)
-      {
-	if ( !(vstate->state & COOPERATIVE_INTERSECTION_MODE) )
-	  {
-	    if (carData[i].distanceIntersection > 3)
-	      {
-		coordinationRequired |= TRUE;
-		for (j=i+1; j<IDS; j++)
-		  {
-		    if (carData[j].distanceIntersection > 0 ) 
-		      {
-			float t1 = (float)carData[i].distanceIntersection/(float)carData[i].pressSpeed;
-			float t2 = (float)carData[j].distanceIntersection/(float)carData[j].pressSpeed;
-			dbg("CONTROLSYSTEM", "Info time before intersection %u -> %f \n", i, t1);
-			dbg("CONTROLSYSTEM", "Info time before intersection %u -> %f \n", j, t2);
-			if (abs(t1 - t2) < TIMEBETWEENCROSSING)		 
-			  {		      	
-			    float speed;
-			    if (t1 <= t2)	
-			      {
-				v = j;
-				speed = (float)(carData[v].distanceIntersection) / (t2+(float)TIMEBETWEENCROSSING);		
-			      }
-			    else
-			      {
-				v = i;			    
-				speed = (float)(carData[v].distanceIntersection) / (t1+(float)TIMEBETWEENCROSSING);		      
-			      }
-			    call GVSA.sendCoordination(v+1, (uint8_t)speed);
-			    dbg("CONTROLSYSTEM", "Info sending Coordination %lu, new speed %lu \n", v+1, (uint8_t)speed);
-			    vstate->state |= COOPERATIVE_INTERSECTION_MODE;
-			  }
-		      }
-		  }
-	      }
-	  }	
-      }
-
-    if (!coordinationRequired)
-      dbg("CONTROLSYSTEM", "No coordination required. \n");
-    vstate->state &= ~COOPERATIVE_INTERSECTION_MODE;
-  }
-
-      
-          
-  bool health(uint32_t t)
-  {
-    return t >= now-D-2;
-  }
-      
-  void stateMachinePlatoon(bool tr, Vstate_t *vstate)
-  {
-    //dbg("LEDS", "Info  stateMachinePlatoon %lu, %lu %lu\n", (vstate->state & PLATOON_MODE), tr, ppInterval.length == 0);	       
-    if ((tr && !(vstate->state & PLATOON_MODE)) || (ppInterval.length == 0 && tr))
-      {
-	//speed = f(a);
-	//headway = g(a);
-	vstate->state |=  PLATOON_MODE;
-	vstate->start = vstate->now+2*D;   
-	call GVSA.sendPlatoonMode(f(0,0));
-	dbg("LEDS", "Info cars will start platoon mode %lu %lu %lu\n", TOS_NODE_ID, vstate->start, vstate->platoon );
-      }
-    else if (tr && (vstate->state & PLATOON_MODE))
-      {  	  
-	//speed = f(a);
-	//headway = g(a);
-	if (ppInterval.length <= 1  && ppInterval.ppStart[0]  < now)  
-	  {
-	    vstate->state |=  PLATOON_MODE;
-	    vstate->start = ppInterval.ppStart[0] + PLATOON_INTERVAL;   
-	    call GVSA.sendPlatoonMode(f(0,0));
-	    //dbg("LEDS", "Info Cars will Continue platoon mode %lu %lu %lu\n", TOS_NODE_ID, vstate->start, vstate->platoon );
-	  }
-	//else
-	//dbg("LEDS", "Info Checking platton %lu %lu\n", TOS_NODE_ID, ppInterval.ppStart[0], now);
-
-      }
-    else if (!tr && (vstate->state & PLATOON_MODE))
-      {
-	vstate->state &= ~PLATOON_MODE;
-	call GVSA.sendPlatoonMode(f(0,0));
-	//dbg("LEDS", "Info Cars will return to cruise control mode %lu %lu\n", TOS_NODE_ID, vstate->state);
-      }
-    /*else if (!tr && !(vstate->state & PLATOON_MODE))
-      {
-      dbg("LEDS", "Info Cars will continue in cruise control mode %lu %lu %lu\n", TOS_NODE_ID, vstate->state, tr);
-      } */
-	
-  }
-      
-      
-      
-  void processPlatoon(Vstate_t *vstate)
-  {
-    uint8_t i,j, car1, car2, car3, p;
-	  
-    uint8_t count=0;
-    uint8_t lane, lane2;
-    uint8_t carlane[NUMLANES][IDS];
-    uint8_t num[NUMLANES];
-    uint32_t c1c2, c1c3, c2c3;
-    uint32_t d1; 
-	  
-    c1c2 = 0xffffff;
-    c1c3 = 0xffffff;
-    c2c3 = 0xffffff;
-	  
-    for (lane=0; lane<NUMLANES; lane++)
-      num[lane] = 0;
-	  	
-	  
-    for (i=0; i<IDS-1; i++)
-      {
-	if (!health(carData[i].ts))
-	  return;
-	carlane[carData[i].lane][num[carData[i].lane]++] = i;
-	//dbg("LEDS", "Info %lu in lane %lu\n", i, carData[i].lane);	       
-      }
-    count = 0;
-    vstate->platoon = 0;
-    /// Check for platoon
-
-    for (lane = 0; lane < NUMLANES; lane++)  // Sort the cars by 
-      {
-	     
-	if (num[lane]>=2)
-	  {
-	    for (i=0; i<num[lane]; i++)
-	      {
-		car1 = carlane[lane][i];
-		dbg("CONTROLSYSTEM", "Info %lu on lane %lu and %lu\n", car1, lane, carData[car1].distanceFront);	    
-		if (carData[car1].distanceFront <= 6 && carData[car1].distanceFront > 0)
-		  {			 
-		    vstate->platoon  |=  1 << car1;
-		    count++;
-			  
-		  }
-		else if (carData[car1].distanceFront == 0xf) // one in front?
-		  {	
-		    for (j=0; j<num[lane]; j++)
-		      {
-			car2 = carlane[lane][j];
-			if (car1 != car2)
-			  { 		     	
-			    if (abs(distance2(car1, car2) - 
-				    carData[car2].distanceFront*carData[car2].distanceFront) <= 4)
-			      {
-				vstate->platoon  |=  1 << car1;
-				count++;
-				break;
-			      }
-			  }
-		      }
-		  }		  
-		      
-		if (count >= 3)
-		  stateMachinePlatoon(count >= 3, vstate);		             
-	      } 
-	  }	 
-      }
-    if (vstate->state & LANECHANGE)
-      return;
-    lane = num[0] <= num[1] ? 0 : 1;
-    lane2 = num[0] > num[1] ? 0 : 1;
-    car2 = 0xff;
-    car3 = 0xff;
-    if (num[lane]>0 && num[lane2]>0)
-      {
-	for (i=0; i<num[lane]; i++)
-	  {
-	    car1 = carlane[lane][i];
-	    if (carData[car1].distanceFront == 0xf)  /// only the header can change lanes
-	      {			    
-		for (j=0; j<num[lane2]; j++)
-		  {
-		    p = carlane[lane2][j];
-		    d1 = distance2(car1, p);
-		    if (carData[p].distanceFront == 0xf && d1 < c1c3)
-		      {
-			c1c3 = d1;
-			car3 = p; 
-		      }
-		    else  if (carData[p].distanceFront < 0xf && d1 < c1c2)
-		      {
-			c1c2 = d1;
-			car2 = p; 
-		      }
-		  }
-		c2c3 = distance2(car2, car3);
-		if (c1c2 > c1c3 &&   c1c2*c1c2 <= c2c3*c2c3 + c1c3*c1c2 && 
-		    // if (c1c2 > c1c3 &&  c1c3 < c2c3*3 && //   c1c2 < c1c3 + c2c3 && 
-		    //abs(c2c3 - carData[car2].distanceFront*carData[car2].distanceFront) <= 4 && 
-		    carData[car2].pressSpeed > 0)
-		  {
-		    vstate->state |= LANECHANGE;
-		    vstate->start = vstate->now+2;
-		    dbg("LEDS", "Info %lu will merge %lu,  %lu\n", car1, car3, car2);	       
-		    call GVSA.sendLaneChange(car2, car1, car3, carData[car2].pressSpeed);
-		    timeout2 = 50;
-		  }
-	      }
-	  }	 	     		
-      }
-  }
-      
-      
+           
   event void GVSA.VSAclock(Vstate_t *vstate)
   {	  
     //if (vstate->duration == 0)
     //return FALSE;
-    // processCoordination(vstate);
-    processPlatoon(vstate);
 
+    processCoordination(vstate);
+    processPlatoon(vstate);
     state =*vstate;
     if (timeout2 > 0 && vstate->state & LANECHANGE)
       {
 	timeout2--;
 	if (timeout2 == 0)
 	  vstate->state &= ~LANECHANGE;	
-      }
-	    
+      }	    
   }
+
 }
 

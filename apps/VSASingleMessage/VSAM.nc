@@ -37,9 +37,9 @@ implementation{
   void set(uint8_t s)
   {	
     call Leds.set(s);
-    dbg("LEDS","STATUS %lu,%lu\n", TOS_NODE_ID, s);
+
     /* if (s != 0)
-       dbg("LEDS","Info %lu STATUS %lu\n", TOS_NODE_ID, s);		*/ 
+       dbg("VSA","Info %lu STATUS %lu\n", TOS_NODE_ID, s);		*/ 
 	  
     if (s== LEADER && status != LEADER)
       {
@@ -118,7 +118,7 @@ implementation{
   }
       
       
-  bool searchguards(uint8_t nodeID)
+  bool isGuard(uint8_t nodeID)
   {
     uint8_t i;
     for (i=0; i<guards.len; i++)
@@ -168,7 +168,7 @@ implementation{
   {
     createCompleteMessage(PLATOON_FORMATION, reg); // On behalf of the VSA
     cMessage.pressSpeed = speed;
-    //dbg("LEDS", "Info sendPlatoonMode (%lu,%lu)\n", cMessage.start,  cMessage.pressspeed);
+    //dbg("VSA", "Info sendPlatoonMode (%lu,%lu)\n", cMessage.start,  cMessage.pressspeed);
     bcast();
   }
       
@@ -180,6 +180,7 @@ implementation{
     cMessage.v0 = id;
     bcast();
   }
+
   command void GVSA.sendLaneChange(uint8_t v0, uint8_t v1, uint8_t v2, uint8_t speed)
   {
     createCompleteMessage(START_LANE_CHANGE, reg); // On behalf of the VSA
@@ -237,11 +238,12 @@ implementation{
 	  }
       }
   }  
+
       
   void bcastjoin()
   {
 		  
-    //dbg("LEDS","Info bcast(<<join %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
+    //dbg("VSA","Info bcast(<<join %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
       
     joinreqts = now;	  
     timeslice = now+TSLICE;
@@ -251,13 +253,14 @@ implementation{
     createCompleteMessage(JOIN, TOS_NODE_ID);
     holdq.len = procedq.len = simq.len = joinreqs.len = guards.len  = 0;	    
     bcast();
-    //dbg("LEDS","Info trying now=%lu round=%lu, timeslice=%lu \n", now, round, timeslice);
+    //dbg("VSA","Info trying now=%lu round=%lu, timeslice=%lu \n", now, round, timeslice);
   }
+
       
   void bcastrestart()
   {	  
     joinreqts = now;
-    dbg("LEDS","Info bcast(<<restart %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
+    dbg("VSA","Info bcast(<<restart %lu>,%lu, %lu>)\n",  reg, TOS_NODE_ID, now);
     guards.len = 0;
     createCompleteMessage(RESTART, TOS_NODE_ID);
     bcast();     	
@@ -270,7 +273,7 @@ implementation{
     GV_t gv;
     CompleteMessage_t ms;
 	
-    //dbg("LEDS","Info delayrcv %lu, %lu\n", msg.msg, msg.reg);	   
+    // dbg("VSA","Info delayrcv %lu, %lu\n", msg.msg, msg.reg);	   
     if (RESTART == msg.msg)
       {	
 	if (reg == msg.reg)
@@ -283,14 +286,14 @@ implementation{
 	      }
 	    else
 	      {
-		//dbg("LEDS", "Info %lu in STARTJOIN status because TRYING != status and %lu round > now %lu\n", TOS_NODE_ID, round, now);
+		dbg("VSA", "Info %lu in STARTJOIN status because TRYING != status and %lu round > now %lu\n", TOS_NODE_ID, round, now);
 		set(STARTJOIN);
 	      }
 	  }
       }
     else if (JOIN == msg.msg)
       {
-	// dbg("VSA OUTPUT","joinreqs <- joinreqs U {%lu, %lu}\n", msg.reg, msg.ts);
+	dbg("VSA OUTPUT","joinreqs <- joinreqs U {%lu, %lu}\n", msg.reg, msg.ts);
 	if (reg == msg.reg && joinreqs.len < IDS)
 	  {
 	    joinreqs.gv[joinreqs.len].src =  msg.src;
@@ -301,7 +304,7 @@ implementation{
       {	  
 	if (msg.msg != END)
 	  {
-	    //dbg("VSACode","simq <- simq U {m}\n");
+	    dbg("VSACode","simq <- simq U {m}\n");
 	    if (reg == msg.reg && simq.len < MAX_SIM_MESSAGES)
 	      simq.m[simq.len++] = msg;
 	  }
@@ -315,11 +318,11 @@ implementation{
 	if (guards.len > 0 && msg.ghead !=  guards.gv[0].src)
 	  {	      
 	    set(STARTJOIN);
-	    //dbg("LEDS", "Info %lu in STARTJOIN status because %lu is not in the header %lu\n", TOS_NODE_ID, guards.gv[0].src, msg.ghead );
+	    dbg("VSA", "Info %lu in STARTJOIN status because %lu is not in the header %lu\n", TOS_NODE_ID, guards.gv[0].src, msg.ghead );
 	  }
 	if (status != LEADER)
 	  {
-	    //dbg("LEDS","Info simq <- simq U {m}\n");
+	    //dbg("VSA","Info simq <- simq U {m}\n");
 	    vstate.duration = msg.vduration; 
 	    vstate.now = msg.vnow;
 	    vstate.state = msg.vstate;
@@ -368,17 +371,18 @@ implementation{
 		  joinreqs.gv[joinreqs.len++] = gv;
 	      }
 	  }	    
-	if (searchguards(TOS_NODE_ID))
+	if (isGuard(TOS_NODE_ID))
 	  {
 	    if (TRYING == status)
 	      {
+		dbg("VSA", "Info %lu in GUARD status \n", TOS_NODE_ID);
 		set(GUARD);		
 		leadup = FALSE;	       
 	      }
 	  }
-	else if (joinreqts < msg.ts-D)
+	else if ( (joinreqts < msg.ts-D) & (TRYING == status) )
 	  {
-	    //dbg("LEDS", "Info %lu in STARTJOIN status because %lu is less than  %lu\n", TOS_NODE_ID, joinreqts, msg.ts-D);
+	    dbg("VSA", "Info %lu in STARTJOIN status because %lu is less than  %lu\n", TOS_NODE_ID, joinreqts, msg.ts-D);
 	    set(STARTJOIN);   
 	  }
 	if (msg.msg == END) 
@@ -386,15 +390,16 @@ implementation{
       }
     signal GVSA.nodebrcv(&msg);	   
   }
+
       
   void tsBegin()
   {
     GV_t gv;
     uint8_t i;
-    //dbg("LEDS","Info %lu tsBegin: NOW=%lu ROUND=%lu\n", TOS_NODE_ID,now, round); 	  
+    dbg("VSA","Info %lu tsBegin: NOW=%lu ROUND=%lu\n", TOS_NODE_ID,now, round); 	  
     if (GUARD == status)
       {	      	      
-	//dbg("LEDS","Info %lu tsBegin: Guard=%lu leadup=%lu\n", TOS_NODE_ID,guards.gv[0].src, leadup); 	  
+	dbg("VSA","Info %lu tsBegin: Guard=%lu leadup=%lu\n", TOS_NODE_ID,guards.gv[0].src, leadup); 	  
 	gv = guards.gv[0];	      
 	for (i=1; i<guards.len; i++)
 	  guards.gv[i-1] = guards.gv[i];
@@ -402,17 +407,17 @@ implementation{
 	if (leadup)
 	  guards.gv[guards.len++] = gv;	      
       } 	   
-    if (TRYING == status  && searchguards(TOS_NODE_ID)  && round < now)
+    if (TRYING == status  && isGuard(TOS_NODE_ID)  && round < now)
       {
 	startu.now = now;
 	vstate = startu;
 	simq.len = joinreqs.len = 0;	      
 	set(GUARD);
-	//dbg("LEDS","Info Node %lu becomes GUARD  at %lu of region %lu\n", TOS_NODE_ID, now, reg);
+	dbg("VSA","Info Node %lu becomes GUARD  at %lu of region %lu\n", TOS_NODE_ID, now, reg);
       }
     if (GUARD == status  && guards.gv[0].src == TOS_NODE_ID && guards.gv[0].ts == joinreqts)
       {
-	//dbg("LEDS","Info Node %lu becomes LEADER at %lu of region %lu\n", TOS_NODE_ID, now, reg);
+	dbg("VSA","Info Node %lu becomes LEADER at %lu of region %lu\n", TOS_NODE_ID, now, reg);
 	set(LEADER);
       }
     leadup = FALSE;
@@ -488,7 +493,7 @@ implementation{
   void bcastend()
   {
     uint8_t i;	  
-    //dbg("LEDS","Info Node %lu ends leadership at %lu of region %lu and becomes GUARD \n", TOS_NODE_ID, now, reg);
+    //dbg("VSA","Info Node %lu ends leadership at %lu of region %lu and becomes GUARD \n", TOS_NODE_ID, now, reg);
     cMessage.ghead = guards.gv[0].src;
     set(GUARD);
     createCompleteMessage(END, reg);	   	  
@@ -522,26 +527,24 @@ implementation{
 	  }
       }
 	   
-	
-	   
     if (LEADER == status &&  guards.len > 0 && (guards.gv[0].src != TOS_NODE_ID && guards.gv[0].ts != joinreqts))
       {
-	dbg("LEDS", "Info LEADER == status &&  guards.len > 0 && (guards.gv[0].src != TOS_NODE_ID && guards.gv[0].ts != joinreqts %lu, %lu\n", TOS_NODE_ID, now);
+	dbg("VSA", "Info LEADER == status &&  guards.len > 0 && (guards.gv[0].src != TOS_NODE_ID && guards.gv[0].ts != joinreqts %lu, %lu\n", TOS_NODE_ID, now);
 	set(STARTJOIN);
       }
     if (joinreqts > now)
       {
-	dbg("LEDS", "Info joinreqts > now %lu, %lu %lu\n", TOS_NODE_ID, now, joinreqts);
+	dbg("VSA", "Info joinreqts > now %lu, %lu %lu\n", TOS_NODE_ID, now, joinreqts);
 	set(STARTJOIN);
       }
     if (round > timeslice + K*TSLICE + D)
       {
-	dbg("LEDS", "Info round > timeslice + K*TSLICE + D %lu, %lu %lu\n", TOS_NODE_ID, round, timeslice + K*TSLICE + D);
+	dbg("VSA", "Info round > timeslice + K*TSLICE + D %lu, %lu %lu\n", TOS_NODE_ID, round, timeslice + K*TSLICE + D);
 	set(STARTJOIN);
       }
     if (timeslice != nowBase+TSLICE)
       {
-	dbg("LEDS", "Info timeslice != nowBase+TSLICE %lu, %lu %lu\n", TOS_NODE_ID, timeslice, nowBase+TSLICE);
+	dbg("VSA", "Info timeslice != nowBase+TSLICE %lu, %lu %lu\n", TOS_NODE_ID, timeslice, nowBase+TSLICE);
 	set(STARTJOIN);
       }
     for (i=0; i<procedq.len; i++)
@@ -549,7 +552,7 @@ implementation{
 	break;
     if (i != procedq.len)
       {
-	dbg("LEDS", "Info procedq.m[i].ts > now - D  %lu, %lu\n", TOS_NODE_ID, procedq.len);
+	dbg("VSA", "Info procedq.m[i].ts > now - D  %lu, %lu\n", TOS_NODE_ID, procedq.len);
 	set(STARTJOIN);
       }
     for (i=0; i<simq.len; i++)
@@ -558,7 +561,7 @@ implementation{
 	break;
     if (i != simq.len)
       {
-	dbg("LEDS", "Info simq.m[i].ts > now - D) &&  (simq.m[i].ts < now - ((K+1)*TSLICE+2*D)) %lu, %lu\n", TOS_NODE_ID, simq.len);
+	dbg("VSA", "Info simq.m[i].ts > now - D) &&  (simq.m[i].ts < now - ((K+1)*TSLICE+2*D)) %lu, %lu\n", TOS_NODE_ID, simq.len);
 	set(STARTJOIN);
       }
     for (i=0; i<joinreqs.len; i++)
@@ -566,7 +569,7 @@ implementation{
 	break;
     if (i != joinreqs.len)
       {
-	dbg("LEDS", "Info joinreqs.gv[i].ts > now - D %lu, %lu\n", TOS_NODE_ID, joinreqs.len);
+	dbg("VSA", "Info joinreqs.gv[i].ts > now - D %lu, %lu\n", TOS_NODE_ID, joinreqs.len);
 	set(STARTJOIN);
       }      	  
 	   
@@ -590,7 +593,7 @@ implementation{
     for(i=0; i<len; i++)
       {	    	      	      	     
 	msg = holdq.m[i]; 
-	//dbg("LEDS", "Info %lu checking time %lu for delayrcv  %lu\n", TOS_NODE_ID, msg.ts, now - D);
+	dbg("VSA", "Info %lu checking time %lu for delayrcv  %lu\n", TOS_NODE_ID, msg.ts, now - D);
 	if (msg.ts == now - D)
 	  delayrcv(msg);
 	else if (now - D < msg.ts && msg.ts <= now)
@@ -599,7 +602,7 @@ implementation{
 	    
     if (now == timeslice+D)   // tsBegin
       tsBegin();
-    else  if (GUARD == status && !searchguards(TOS_NODE_ID))
+    else  if (GUARD == status && !isGuard(TOS_NODE_ID))
       set(STARTJOIN);
 	    
     if (status == LEADER)	   

@@ -8,6 +8,7 @@ configuration VSAC {
 implementation{
   components VSAM;
   components new TimerMilliC() as clock;
+  components LocalTimeMilliC as LocalTime;
   components LedsC;
 
   components new BroadcastP(CompleteMessage_t,BCAST_PERIOD) as Broadcast;
@@ -29,6 +30,7 @@ implementation{
   Broadcast.Timer0 -> Timer0;
   Broadcast.Acks -> AMSenderC;
   Broadcast.Queue -> Queue;
+  Broadcast.LocalTime -> LocalTime;
 
 }
 

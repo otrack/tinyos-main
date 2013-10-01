@@ -1,6 +1,9 @@
+#include <Timer.h>
+
 generic module BroadcastP(typedef T, int PERIOD){
   provides interface Broadcast<T>;	
   uses{
+    interface LocalTime<TMilli> as LocalTime;
     interface Timer<TMilli> as Timer0;
     interface Receive;
     interface AMSend;
@@ -56,7 +59,7 @@ implementation {
 	
   command void Broadcast.bcast(T m)
   {
-    dbg("BCAST","Info %lu Broadcast.bcast \n", TOS_NODE_ID);	      
+    dbg("BCAST","Info (%lu,%ld) Broadcast.bcast \n", TOS_NODE_ID, call LocalTime.get());	      
     if (call Queue.size() < call Queue.maxSize())
       call Queue.enqueue(m);
   }
@@ -68,14 +71,14 @@ implementation {
       signal Broadcast.brcv(&toSend);  
       call Queue.dequeue();
       locked = FALSE;
-      dbg("BCAST","Info %lu Broadcast.sendDone \n", TOS_NODE_ID);	      
+      dbg("BCAST","Info (%lu,%ld) Broadcast.sendDone \n", TOS_NODE_ID, call LocalTime.get());	      
     }
   }
               
   event message_t* Receive.receive(message_t* bufPtr, void* payload, uint8_t len) {
     if (len == sizeof(T)) {		  
       T* m = (T*)payload;		  
-      dbg("BCAST","Info %lu  Broadcast.receive msg %lu \n", TOS_NODE_ID);	      
+      dbg("BCAST","Info (%lu,%ld) Broadcast.receive msg from \n", TOS_NODE_ID,call LocalTime.get()); 
       signal  Broadcast.brcv(m);
     }	    
     return bufPtr;
