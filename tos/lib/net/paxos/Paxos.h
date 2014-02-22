@@ -6,15 +6,12 @@
  */
 
 enum {
-  CONCURRENT_INSTANCES = 3,
-  LEADER_PERIOD_MILLI = 100,
-  LEADER_TIMEOUT_MILLI = 1000,
   PHASE_1A = 0,
   PHASE_1B = 1,
   PHASE_2A = 2,
   PHASE_2B = 3,
   QUORUM_SIZE = 2,
-  PAXOS_PAYLOAD_SIZE = 1
+  PAXOS_PAYLOAD_SIZE = 10 // FIXME do a proper evaluation of this
 };
 
 typedef nx_uint16_t ballot_t;
@@ -30,11 +27,6 @@ typedef nx_struct value_t{
 typedef nx_struct propose_msg_t {
   value_t value;
 } propose_msg_t;
-
-typedef nx_struct decision_msg_t {
-  iid_t instance;
-  value_t value;
-} decision_msg_t;
 
 typedef nx_struct phase1a_msg_t {
   nx_uint16_t nodeid;
@@ -76,10 +68,11 @@ typedef nx_struct phase2b_msg_t {
 
 typedef struct leader_t {
   ballot_t ballot;
-  value_t* toPropose;
-  nx_uint16_t nmsgs;
+  bool gotProposal;
+  value_t toPropose;
+  uint16_t nmsgs;
   ballot_t hbal;
-  value_t* hval;
+  value_t hval;
 } leader_t;
 
 /*
@@ -89,7 +82,7 @@ typedef struct leader_t {
 typedef struct acceptor_t {
   ballot_t cbal;
   ballot_t lbal;
-  value_t* lval;
+  value_t lval;
 } acceptor_t;
 
 /*
@@ -99,7 +92,7 @@ typedef struct acceptor_t {
 typedef struct learner_t {
   ballot_t ballot;
   nx_uint16_t nmsgs;
-  value_t* decision;
+  value_t decision;
 } learner_t;
 
 
