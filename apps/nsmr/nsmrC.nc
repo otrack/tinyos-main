@@ -1,19 +1,17 @@
-#include "Paxos.h"
-
 module TestPaxosC {
   uses interface Boot;
   uses interface Timer<TMilli> as Timer0;
-  uses interface Paxos;
+  uses interface ABroadcast<uint8_t>;
   uses interface Leds;
 }
 implementation {
 
   uint8_t round;
-  uint16_t counter = 4480;
+  uint4_t counter = 4480;
 
   event void Boot.booted()
   {
-    call Timer0.startPeriodic(100);
+    call Timer0.startPeriodic(1000);
   }
 
   void setLeds(uint16_t val) {
@@ -33,11 +31,11 @@ implementation {
   
   event void Timer0.fired() {
     counter++;
-    call Paxos.propose(TOS_NODE_ID%4+1);
+    call ABroadcast.bcast(counter);
   }
 
-  event void Paxos.learn(uint16_t v){
-    
+  event void ABroadcast.brcv(uint4_t v){
+    setLeads(v)
   }
 
 }

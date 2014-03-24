@@ -7,7 +7,7 @@ module VSAM{
   provides interface GVSA;	
   uses{
     interface Timer<TMilli> as   clock;
-    interface Broadcast<CompleteMessage_t> as Broadcast;
+    interface ABroadcast<CompleteMessage_t> as Broadcast;
     interface Leds;
   }
 }
@@ -152,7 +152,7 @@ implementation{
       
   void bcast()
   {	
-    call Broadcast.bcast(cMessage);
+    call Broadcast.bcast(&cMessage);
   }
       
   command void GVSA.bcastNode(uint8_t Message)

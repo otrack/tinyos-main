@@ -50,8 +50,7 @@ implementation {
 	
   command T* ABroadcast.bcast(T* m)
   {
-    printf("ABCAST bcast (%u) \n",*m);
-    printfflush();
+    dbg("ABCAST","abcast (%u) \n",*m);
     atomic{
       if (call Queue.size() < call Queue.maxSize()) {
 	call Queue.enqueue(*m);
@@ -62,8 +61,7 @@ implementation {
   }
    
   event void Paxos.learn(T* v){
-    printf("ABCAST rcv (%u) \n",*v);
-    printfflush();
+    dbg("ABCAST","abrcv (%u) \n",*v);
     atomic{
       if (memcmp(v,&toSend,sizeof(T))==0) {
 	call Queue.dequeue();

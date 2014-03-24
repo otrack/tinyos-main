@@ -67,7 +67,7 @@ implementation {
     id_msg_t* id_msg;
     dbg("MEMBERSHIP", "call IN\n");
     if (len!=sizeof(id_msg_t)) {
-      dbg("MEMBERSHIP", "call OUT2\n");
+      dbg("MEMBERSHIP", "call OUT2 having %u \n",len);
       return msg;
     }
     id_msg = (id_msg_t*) payload;    

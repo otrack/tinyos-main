@@ -158,7 +158,6 @@ class Car:
       print "Pop Speed ", self.pressSpeed, " Headway ", self.headway
     
   def newSpeed(self) :
-    print "HERE"
     if self.platoon and self.front.id != 0:
       self.speedwithobstacles = max(self.pressSpeed + ((self.front.distance-self.headway )/(REFRESH*10)), 0);
       

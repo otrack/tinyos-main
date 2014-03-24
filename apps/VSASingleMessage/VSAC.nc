@@ -6,31 +6,38 @@ configuration VSAC {
   provides interface GVSA;
 }
 implementation{
-  components VSAM;
+  components MainC, VSAM;
   components new TimerMilliC() as clock;
   components LocalTimeMilliC as LocalTime;
   components LedsC;
 
-  components new BroadcastP(CompleteMessage_t,BCAST_PERIOD) as Broadcast;
+  components new ABroadcastP(CompleteMessage_t,BCAST_PERIOD) as ABroadcast;
   components new QueueC(CompleteMessage_t, BCAST_MSG_QUEUE_SIZE) as Queue;
-  components new TimerMilliC() as Timer0;
-  components new AMSenderC(AM_BROADCAST);
-  components new AMReceiverC(AM_BROADCAST);
-  components ActiveMessageC as ActiveMessageC;
+  components new PaxosC(CompleteMessage_t,500,10) as Paxos;
+  components new TimerMilliC() as TimerMilli1;
+  components new TimerMilliC() as TimerMilli2;
+
+  components new AMSenderC(AM_BROADCAST) as AMSender;
+  components new AMReceiverC(AM_BROADCAST) as AMReceiver;
+  components ActiveMessageC as AM;
 	
   GVSA = VSAM;
   VSAM.clock -> clock;
-  VSAM.Broadcast -> Broadcast;
+  VSAM.Broadcast -> ABroadcast;
   VSAM.Leds -> LedsC;
 
-  Broadcast.Receive -> AMReceiverC;
-  Broadcast.AMSend -> AMSenderC;
-  Broadcast.AMControl -> ActiveMessageC;
-  Broadcast.Packet -> AMSenderC;
-  Broadcast.Timer0 -> Timer0;
-  Broadcast.Acks -> AMSenderC;
-  Broadcast.Queue -> Queue;
-  Broadcast.LocalTime -> LocalTime;
+  ABroadcast.LocalTime -> LocalTime;
+  ABroadcast.Timer0 -> TimerMilli1;
+  ABroadcast.Queue -> Queue;
+  ABroadcast.Paxos -> Paxos;
+  ABroadcast.AMControl -> AM;
 
+  Paxos.Boot -> MainC.Boot;
+  Paxos.Timer0 -> TimerMilli2;
+  Paxos.Packet -> AM;
+  Paxos.AMPacket -> AM;
+  Paxos.AMControl -> AM;
+  Paxos.Receive -> AMReceiver;
+  Paxos.AMSend -> AMSender;
 }
 

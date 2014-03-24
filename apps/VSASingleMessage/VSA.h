@@ -3,7 +3,7 @@
 
 // Broadcast parameters
 #define BCAST_MSG_QUEUE_SIZE 20
-#define BCAST_PERIOD 3
+#define BCAST_PERIOD 1000
 
 //#define 		SIM 0
 

@@ -10,8 +10,7 @@ enum {
   PHASE_1B = 1,
   PHASE_2A = 2,
   PHASE_2B = 3,
-  QUORUM_SIZE = 2,
-  PAXOS_PAYLOAD_SIZE = 10 // FIXME do a proper evaluation of this
+  PAXOS_PAYLOAD_SIZE = 18 // FIXME for micaz only
 };
 
 typedef nx_uint16_t ballot_t;

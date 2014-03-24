@@ -17,16 +17,19 @@ from pyglet.window import key
  
 myBuffer = ""
 
-
 radio = car.tossim.radio()
-sf = SerialForwarder(9001)
+serialpkt = car.tossim.newSerialPacket()
 
-f = open("pipe", 'w')
-f1 = open("pipe", 'r')
-car.tossim.addChannel("LEDS",f)
-car.tossim.addChannel("SERIAL", sys.stdout);
-# car.tossim.addChannel("BCAST", sys.stdout);
-car.tossim.addChannel("COORDINATION", sys.stdout);
+# sf = SerialForwarder(9001)
+f = open("serial", 'w')
+f1 = open("serial", 'r')
+car.tossim.addChannel("CAR",f)
+
+### debug
+car.tossim.addChannel("CONTROLSYSTEM", sys.stdout);
+# car.tossim.addChannel("VSA", sys.stdout);
+# car.tossim.addChannel("ABCAST", sys.stdout);
+car.tossim.addChannel("PAXOS", sys.stdout);
 
 keys = key.KeyStateHandler()
 win = pyglet.window.Window()

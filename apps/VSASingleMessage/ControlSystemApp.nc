@@ -4,13 +4,13 @@
 
 configuration ControlSystemApp{}
 implementation{
-	components ControlSystemP;
-	components MainC, VSAC, CarC;
-	components LedsC;
-
-	ControlSystemP -> MainC.Boot;
-	ControlSystemP.GVSA -> VSAC;
-	ControlSystemP.Car -> CarC;
-	ControlSystemP.Leds -> LedsC;  
+  components ControlSystemP;
+  components MainC, VSAC, CarC;
+  components LedsC;
+  
+  ControlSystemP -> MainC.Boot;
+  ControlSystemP.GVSA -> VSAC;
+  ControlSystemP.Car -> CarC;
+  ControlSystemP.Leds -> LedsC;  
 }
 

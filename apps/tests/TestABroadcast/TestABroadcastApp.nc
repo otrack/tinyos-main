@@ -32,7 +32,7 @@ implementation {
   
   event void Timer0.fired() {
     if (locked) return;
-    counter*=TOS_NODE_ID;
+    counter+=TOS_NODE_ID;
     call ABroadcast.bcast(&counter);
     locked = TRUE;
   }
