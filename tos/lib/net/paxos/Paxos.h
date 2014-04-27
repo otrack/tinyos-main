@@ -28,7 +28,7 @@ typedef nx_struct propose_msg_t {
 } propose_msg_t;
 
 typedef nx_struct phase1a_msg_t {
-  nx_uint16_t nodeid;
+  nx_uint16_t leaderid;
   iid_t instance;
   ballot_t ballot;
 } phase1a_msg_t;
@@ -105,6 +105,7 @@ typedef struct instance_t{
   leader_t leader;
   acceptor_t acceptor;
   learner_t learner;
+  bool decided;
 } instance_t;
 
 #endif

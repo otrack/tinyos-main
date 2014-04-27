@@ -33,13 +33,17 @@ implementation {
   event void Timer0.fired() {
     if (locked) return;
     counter+=TOS_NODE_ID;
-    call ABroadcast.bcast(&counter);
+    if (TOS_NODE_ID==1){
+      dbg("TEST","broadcasting(%u)\n",counter); 
+      call ABroadcast.bcast(&counter);
+    }
     locked = TRUE;
   }
 
   event void ABroadcast.brcv(uint16_t *v){
     if (*v == counter) locked = FALSE;
     setLeds(*v);
+    dbg("TEST","received(%u)\n",*v); 
   }
 
 }

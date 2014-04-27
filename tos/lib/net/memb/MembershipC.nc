@@ -12,6 +12,7 @@ generic module MembershipC(int MAX_MEMBERS, int MEMBERSHIP_PERIOD_MILLI){
 implementation {
   uint16_t members[MAX_MEMBERS];
   uint16_t nmembers = 0;
+  uint16_t leader;
   message_t pkt;
   id_msg_t* msg_id;
     
@@ -23,12 +24,13 @@ implementation {
     }
     nmembers++;
     members[nmembers-1] = TOS_NODE_ID;
-    dbg("MEMBERSHIP", "up and running\n");
+    leader = TOS_NODE_ID;
+    dbg("MEMBERSHIP", "Membership up and running\n");
   }
 
   event void AMControl.stopDone(error_t err) {
   }
- 
+  
   event void AMSend.sendDone(message_t* msg, error_t error) {
   }
     
@@ -53,29 +55,32 @@ implementation {
     return size;
   }
 
+  command uint16_t Membership.size(){
+    dbg("MEMBERSHIP", "call size %u\n",members);
+  }
+
   command bool Membership.contains(uint16_t node){
     return contains(node);
   }
 
   command uint16_t Membership.leader(){
-    uint16_t leader = members[0];
     dbg("MEMBERSHIP", "call leader %u\n",leader);
     return leader;
   }
 
   event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len) {
     id_msg_t* id_msg;
-    dbg("MEMBERSHIP", "call IN\n");
     if (len!=sizeof(id_msg_t)) {
-      dbg("MEMBERSHIP", "call OUT2 having %u \n",len);
       return msg;
     }
-    id_msg = (id_msg_t*) payload;    
+    id_msg = (id_msg_t*) payload;
     if (!contains(id_msg->nodeid)) {
-      nmembers++;   
+      nmembers++;
       members[nmembers-1] = id_msg->nodeid;
+      if (id_msg->nodeid < leader)
+	leader = id_msg->nodeid;
     }
-    dbg("MEMBERSHIP", "call OUT\n");
+    return msg;
   }
 
 }
